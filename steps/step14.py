@@ -24,9 +24,11 @@ class Variable:
             if not isinstance(gxs, tuple):
                 gxs = (gxs, )
             for x, gx in zip(f.inputs, gxs):
-                x.grad = gx
+                x.grad = gx if x.grad is None else gx + x.grad
                 if x.creator is not None:
                     funcs.append(x.creator)
+    def cleargrad(self):
+        self.grad = None
 
 def as_array(x):
     if np.isscalar(x):
@@ -74,8 +76,8 @@ def square(x):
     return Square()(x)
 
 if __name__ == "__main__":
-    x1 = Variable(np.array(2))
-    x2 = Variable(np.array(3))
+    x1: Variable = Variable(np.array(2))
+    x2: Variable = Variable(np.array(3))
     y = add(x1, x2)
     print(y.data)
     z = add(square(x1), square(x2))
@@ -84,6 +86,7 @@ if __name__ == "__main__":
     print(x1.grad)
     print(x2.grad)
 
+    x2.cleargrad()
     w = add(x2, x2)
     print(w.data)
 

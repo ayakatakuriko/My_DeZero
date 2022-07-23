@@ -1,5 +1,6 @@
-from turtle import forward
 import numpy as np
+import weakref
+from heapq import * 
 
 class Variable:
     def __init__(self, data: np.ndarray) -> None:
@@ -9,24 +10,41 @@ class Variable:
         self.data = data        
         self.grad = None
         self.creator = None
+        self.generation = 0
 
     def set_creator(self, func):
         self.creator = func
+        self.generation = func.generation + 1
 
     def backward(self):
         if self.grad is None:
             self.grad = np.ones_like(self.data)
-        funcs = [self.creator]
+        funcs = []
+        seen_set = set()
+
+        def add_func(f: Function):
+            if f not in seen_set:
+                heappush(funcs, (-f.generation, f))
+                seen_set.add(f)
+
+        def pop_func():
+            _, f = heappop(funcs)
+            return f
+
+        add_func(self.creator)
         while funcs:
-            f = funcs.pop()
-            gys = [output.grad for output in f.outputs]
+            f = pop_func()
+            gys = [output().grad for output in f.outputs]
             gxs = f.backward(*gys)
             if not isinstance(gxs, tuple):
                 gxs = (gxs, )
             for x, gx in zip(f.inputs, gxs):
-                x.grad = gx
+                x.grad = gx if x.grad is None else gx + x.grad
                 if x.creator is not None:
-                    funcs.append(x.creator)
+                    add_func(x.creator)
+
+    def cleargrad(self):
+        self.grad = None
 
 def as_array(x):
     if np.isscalar(x):
@@ -40,10 +58,12 @@ class Function:
         if not isinstance(ys, tuple):
             ys = (ys, )
         outputs = [Variable(as_array(y)) for y in ys]
+        self.generation = max([x.generation for x in inputs])
+
         for output in outputs:
             output.set_creator(self)
         self.inputs = inputs
-        self.outputs = outputs
+        self.outputs = [weakref.ref(output) for output in outputs]
         return outputs if len(outputs) > 1 else outputs[0]
 
     def forward(self, xs):                
@@ -51,6 +71,9 @@ class Function:
 
     def backward(self, gys):
         raise NotImplementedError
+
+    def __lt__(self, other):
+        return type(self).__name__ < type(other).__name__
 
 class Add(Function):
     def forward(self, x1, x2):
@@ -74,18 +97,14 @@ def square(x):
     return Square()(x)
 
 if __name__ == "__main__":
-    x1 = Variable(np.array(2))
-    x2 = Variable(np.array(3))
-    y = add(x1, x2)
+    x: Variable = Variable(np.array(2.0))
+    a = square(x)
+    y = add(square(a), square(a))
+    y.backward()
+
     print(y.data)
-    z = add(square(x1), square(x2))
-    z.backward()
-    print(z.data)
-    print(x1.grad)
-    print(x2.grad)
+    print(x.grad)
 
-    w = add(x2, x2)
-    print(w.data)
-
-    w.backward()
-    print("x2.grad", x2.grad)
+    for i in range(10):
+        x = Variable(np.random.randn(10000))
+        y = square(square(square(x)))
