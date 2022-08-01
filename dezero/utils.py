@@ -1,3 +1,4 @@
+import numpy as np
 from dezero import *
 import os
 import subprocess
@@ -60,3 +61,33 @@ def plot_dot_graph(output: Variable, verbose: bool=True, to_file: str="graph.dot
     extension: str = os.path.splitext(to_file)[1][1:]
     cmd: str = "dot {} -T {} -o {}".format(graph_path, extension, to_file)
     subprocess.run(cmd, shell=True)
+
+def reshape_sum_backward(gy: Variable, x_shape: tuple, axis, keepdims: bool):
+    ndim = len(x_shape)
+    tupled_axis = axis
+    if axis is None:
+        tupled_axis = None
+    elif not isinstance(axis, tuple):
+        tupled_axis = (axis,)
+    
+    if not (ndim == 0 or tupled_axis is None or keepdims):
+        actual_axis = [a if a >=0 else a + ndim for a in tupled_axis]
+        shape = list(gy.shape)
+        for a in sorted(actual_axis):
+            shape.insert(a, 1)
+    else:
+        shape = gy.shape
+
+    gy = gy.reshape(shape)
+    return gy
+
+def sum_to(x: np.ndarray, shape):
+    ndim: int = len(shape)
+    lead: int = x.ndim - ndim
+    lead_axis: tuple = tuple(range(lead))
+
+    axis: tuple = tuple([i + lead for i, sx in enumerate(shape) if sx == 1])
+    y: np.ndarray = x.sum(lead_axis + axis, keepdims=True)
+    if lead > 0:
+        y = y.squeeze(lead_axis)
+    return y 
